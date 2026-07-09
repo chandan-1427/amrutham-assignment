@@ -12,6 +12,8 @@ import {
   jsonb,
   date
 } from 'drizzle-orm/pg-core';
+import { relations } from 'drizzle-orm';
+import { z } from 'zod';
 
 export const userRoleEnum = pgEnum('user_role', ['patient', 'doctor', 'admin']);
 export const userStatusEnum = pgEnum('user_status', ['active', 'suspended', 'deleted']);
@@ -64,3 +66,20 @@ export const refreshTokens = pgTable(
     userIdIdx: index('refresh_tokens_user_id_idx').on(table.userId),
   })
 );
+
+export const updateProfileSchema = z.object({
+  fullName: z.string().min(1).max(200).optional(),
+  dob: z.string().date().optional(),
+  gender: z.string().max(50).optional(),
+  addressJson: z.record(z.string(), z.unknown()).optional(),
+  languagePref: z.string().max(50).optional(),
+}).refine((data) => Object.keys(data).length > 0, {
+  message: 'At least one field must be provided',
+});
+
+export const usersRelations = relations(users, ({ one }) => ({
+  profile: one(profiles, {
+    fields: [users.id],
+    references: [profiles.userId],
+  }),
+}));

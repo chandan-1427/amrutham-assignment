@@ -4,10 +4,12 @@ import { serve } from '@hono/node-server'
 import { HTTPException } from 'hono/http-exception';
 import { AppError } from './lib/errors.js';
 import auth from './routes/auth/index.js';
+import usersRoute from './routes/users/index.js';
 
 const app = new Hono();
 
 app.route('/auth', auth);
+app.route('/users', usersRoute);
 
 app.onError((err, c) => {
   if (err instanceof AppError) {

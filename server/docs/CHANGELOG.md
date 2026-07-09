@@ -65,8 +65,8 @@ pattern as the doc's own Tier 2 scoping call-outs.
 ### User Profile routes (Tier 1) — `src/routes/users/index.ts`
 | Route | Status |
 |---|---|
-| `GET /users/me` | 🔲 written, not yet tested — returns `users` core fields + joined `profile` |
-| `PATCH /users/me` | 🔲 written, not yet tested — patches `profiles` only (`fullName`, `dob`, `gender`, `addressJson`, `languagePref`); email/phone/role/status are intentionally not patchable here |
+| `GET /users/me` | ✅ tested — returns user + joined profile, 401 with no/invalid token |
+| `PATCH /users/me` | ✅ tested — updates profile fields, 400 on empty body, 400 on invalid dob format |
 
 ### Middleware
 - `src/middleware/auth.ts` — `requireAuth`. Single responsibility: extract
