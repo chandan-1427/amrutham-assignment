@@ -79,3 +79,40 @@ pattern as the doc's own Tier 2 scoping call-outs.
 ## Environment setup
 
 Required in `.env` (project root):
+```
+DATABASE_URL=postgresql://...
+JWT_SECRET=<48-byte hex>
+MFA_ENCRYPTION_KEY=<32-byte hex>
+```
+
+Generate secrets on Windows (no OpenSSL dependency):
+```powershell
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"   # MFA_ENCRYPTION_KEY
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"   # JWT_SECRET
+```
+
+Migrations:
+```powershell
+pnpm db:generate
+pnpm db:migrate
+```
+
+---
+
+## Environment/tooling notes worth remembering
+
+- Project uses `NodeNext` module resolution + `"type": "module"` — all
+  relative imports must use explicit `.js` extensions even though the source
+  files are `.ts`.
+- CJS packages under `NodeNext` sometimes need namespace imports
+  (`import * as x from 'pkg'`) instead of default imports depending on how
+  their type declarations are shaped — hit this with `otplib`.
+- PowerShell's `curl` alias is `Invoke-WebRequest`, not real curl — use
+  `Invoke-RestMethod` for JSON APIs, and `Format-List` instead of the default
+  table view when a response has enough fields to get truncated.
+
+---
+
+## Next up
+- Test `GET /users/me` and `PATCH /users/me`
+- Then: Doctor Availability & Search routes
