@@ -68,6 +68,17 @@ pattern as the doc's own Tier 2 scoping call-outs.
 | `GET /users/me` | ✅ tested — returns user + joined profile, 401 with no/invalid token |
 | `PATCH /users/me` | ✅ tested — updates profile fields, 400 on empty body, 400 on invalid dob format |
 
+### Doctor Availability & Search (Tier 1) — `src/routes/doctors/index.ts`, `src/routes/availability/index.ts`
+| Route | Status |
+|---|---|
+| `POST /doctors/:id/availability` | ✅ tested — doctor-only, ownership-checked (token sub must match :id param), 403 for wrong doctor or patient role, 400 on endTime before startTime |
+| `GET /availability/search` | ✅ tested — filters by specialty/date/language/maxPrice, no auth required per route map, no Redis cache yet (deferred per decision) |
+
+**Scope notes:**
+- No overlap checking on slot creation — a doctor can create overlapping slots. Not in the original spec; flagged rather than silently added.
+- `maxPrice` filter treated as a ceiling (patient budget), not a range — DB doc only said "price" generically.
+- `POST /doctors` (creating a doctor record) is Tier 2 / not implemented. Test doctor accounts are provisioned via `src/db/seed.ts` (`pnpm db:seed <email>`), a dev-only script, not a route.
+
 ### Middleware
 - `src/middleware/auth.ts` — `requireAuth`. Single responsibility: extract
   `Bearer` token, verify signature/expiry via `jose`, attach `{ id, role }`

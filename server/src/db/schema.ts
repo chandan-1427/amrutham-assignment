@@ -10,13 +10,17 @@ import {
   uniqueIndex,
   index,
   jsonb,
-  date
+  date,
+  numeric,
+  integer
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { z } from 'zod';
 
 export const userRoleEnum = pgEnum('user_role', ['patient', 'doctor', 'admin']);
 export const userStatusEnum = pgEnum('user_status', ['active', 'suspended', 'deleted']);
+export const verificationStatusEnum = pgEnum('verification_status', ['pending', 'verified', 'rejected']);
+export const slotStatusEnum = pgEnum('slot_status', ['available', 'held', 'booked', 'cancelled']);
 
 export const users = pgTable(
   'users',
@@ -81,5 +85,67 @@ export const usersRelations = relations(users, ({ one }) => ({
   profile: one(profiles, {
     fields: [users.id],
     references: [profiles.userId],
+  }),
+}));
+
+export const doctors = pgTable(
+  'doctors',
+  {
+    userId: uuid('user_id')
+      .primaryKey()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    specialty: text('specialty').notNull(),
+    qualificationsJson: jsonb('qualifications_json'),
+    verificationStatus: verificationStatusEnum('verification_status').notNull().default('pending'),
+    consultationFee: numeric('consultation_fee', { precision: 10, scale: 2 }).notNull(),
+    ratingAvg: numeric('rating_avg', { precision: 3, scale: 2 }).notNull().default('0'),
+    ratingCount: integer('rating_count').notNull().default(0),
+    languages: text('languages').array().notNull().default([]),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    specialtyIdx: index('doctors_specialty_idx').on(table.specialty),
+    languagesGinIdx: index('doctors_languages_gin_idx').using('gin', table.languages),
+  })
+);
+
+export const availabilitySlots = pgTable(
+  'availability_slots',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    doctorId: uuid('doctor_id')
+      .notNull()
+      .references(() => doctors.userId, { onDelete: 'cascade' }),
+    startTime: timestamp('start_time', { withTimezone: true }).notNull(),
+    endTime: timestamp('end_time', { withTimezone: true }).notNull(),
+    status: slotStatusEnum('status').notNull().default('available'),
+    version: integer('version').notNull().default(0),
+    heldByConsultationId: uuid('held_by_consultation_id'),
+    heldUntil: timestamp('held_until', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    doctorStartStatusIdx: index('availability_slots_doctor_start_status_idx').on(
+      table.doctorId,
+      table.startTime,
+      table.status
+    ),
+  })
+);
+
+export const doctorsRelations = relations(doctors, ({ one, many }) => ({
+  user: one(users, {
+    fields: [doctors.userId],
+    references: [users.id],
+  }),
+  availabilitySlots: many(availabilitySlots),
+}));
+
+export const availabilitySlotsRelations = relations(availabilitySlots, ({ one }) => ({
+  doctor: one(doctors, {
+    fields: [availabilitySlots.doctorId],
+    references: [doctors.userId],
   }),
 }));

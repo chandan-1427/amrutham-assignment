@@ -5,11 +5,15 @@ import { HTTPException } from 'hono/http-exception';
 import { AppError } from './lib/errors.js';
 import auth from './routes/auth/index.js';
 import usersRoute from './routes/users/index.js';
+import doctorsRoute from './routes/doctors/index.js';
+import availabilityRoute from './routes/availability/index.js';
 
 const app = new Hono();
 
 app.route('/auth', auth);
 app.route('/users', usersRoute);
+app.route('/doctors', doctorsRoute);
+app.route('/availability', availabilityRoute);
 
 app.onError((err, c) => {
   if (err instanceof AppError) {
