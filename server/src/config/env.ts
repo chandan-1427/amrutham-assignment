@@ -6,6 +6,7 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(32),
   MFA_ENCRYPTION_KEY: z.string().length(64), // 32-byte hex key for AES-256-GCM
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  PAYMENT_GATEWAY_WEBHOOK_SECRET: z.string().min(32),
 });
 
 const parsed = envSchema.safeParse(process.env);

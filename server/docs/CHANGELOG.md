@@ -79,6 +79,59 @@ pattern as the doc's own Tier 2 scoping call-outs.
 - `maxPrice` filter treated as a ceiling (patient budget), not a range — DB doc only said "price" generically.
 - `POST /doctors` (creating a doctor record) is Tier 2 / not implemented. Test doctor accounts are provisioned via `src/db/seed.ts` (`pnpm db:seed <email>`), a dev-only script, not a route.
 
+### Consultations (Booking Saga) & Payments (Tier 1)
+`src/routes/consultations/index.ts`, `src/routes/payments/index.ts`
+
+| Route | Status |
+|---|---|
+| `POST /consultations` | ✅ tested — saga trigger, optimistic lock on slot, idempotent on retry (bug found + fixed: replay path now returns same `{consultation, payment}` shape as first call) |
+| `GET /consultations/:id` | ✅ tested |
+| `GET /consultations` | ✅ tested — role-scoped correctly for patient and doctor |
+| `POST /consultations/:id/start` | ✅ tested — state guard confirmed (409 on invalid transition) |
+| `POST /consultations/:id/complete` | ✅ tested |
+| `POST /consultations/:id/no-show` | ✅ tested |
+| `POST /consultations/:id/cancel` | ✅ tested — cancels a confirmed booking, releases slot back to available, 409 on cancelling an already-completed consultation |
+| `POST /payments/intent` | ✅ tested |
+| `POST /payments/webhook` | ✅ tested — both confirm and fail paths, HMAC signature verified |
+
+**Bug fixed:** idempotent-replay branch of `POST /consultations` returned a bare
+consultation object instead of the `{consultation, payment}` wrapper the
+first-time path returns — callers retrying with the same `Idempotency-Key`
+got an inconsistent response shape. Fixed by looking up the associated
+payment on replay too.
+
+**Bug fixed (2nd instance of same pattern):** `POST /payments/intent` allowed
+creating a second `payments` row for a consultation that already had one
+(e.g. one created internally by the booking saga) — no uniqueness check on
+`consultation_id` existed at either the app or DB layer. Fixed by:
+1. Checking for an existing payment by `consultationId` before insert,
+   returning the existing one instead of creating a duplicate.
+2. Adding a DB-level `UNIQUE` index on `payments.consultation_id` so the
+   1:1 invariant (per the DB doc's ER summary) holds even under a race,
+   not just when the app-layer check happens to run first.
+3. Both early-return branches wrapped in the same `{payment, checkoutUrl}`
+   shape as the fresh-creation path — same shape-consistency bug as the
+   consultations idempotency fix earlier in this session.
+
+One duplicate row from testing this bug was manually cleaned up before the
+unique index could be applied (see git history / this log — not a schema
+concern, just leftover test data).
+
+**Also fixed:** `requireUuidParam` helper added (`src/lib/params.ts`) —
+malformed UUID path params were previously falling through to Postgres and
+surfacing as a raw 500 (`invalid input syntax for type uuid`) instead of a
+clean 400. Applied to all `:id` params in `consultations` and `doctors` routes.
+
+**Scope/simplification notes:**
+- No monthly partitioning on `consultations`/`payments`/`audit_logs` as the
+  DB doc specifies — deferred, flagged for README as a known simplification
+  given test-scale data.
+- Stub payment gateway (`src/lib/payment-gateway.ts`) — no real network call;
+  HMAC-signed webhook loop is real and exercised via `pnpm webhook:simulate`.
+- Cancel-route idempotency relies on state-machine idempotency (re-cancelling
+  a cancelled consultation is a no-op returning the same result), not a
+  second stored idempotency key.
+
 ### Middleware
 - `src/middleware/auth.ts` — `requireAuth`. Single responsibility: extract
   `Bearer` token, verify signature/expiry via `jose`, attach `{ id, role }`

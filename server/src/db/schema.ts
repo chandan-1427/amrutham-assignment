@@ -12,7 +12,8 @@ import {
   jsonb,
   date,
   numeric,
-  integer
+  integer,
+  type AnyPgColumn
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { z } from 'zod';
@@ -21,6 +22,10 @@ export const userRoleEnum = pgEnum('user_role', ['patient', 'doctor', 'admin']);
 export const userStatusEnum = pgEnum('user_status', ['active', 'suspended', 'deleted']);
 export const verificationStatusEnum = pgEnum('verification_status', ['pending', 'verified', 'rejected']);
 export const slotStatusEnum = pgEnum('slot_status', ['available', 'held', 'booked', 'cancelled']);
+export const consultationStatusEnum = pgEnum('consultation_status', [
+  'pending_payment', 'confirmed', 'in_progress', 'completed', 'cancelled', 'no_show',
+]);
+export const paymentStatusEnum = pgEnum('payment_status', ['initiated', 'confirmed', 'failed', 'refunded']);
 
 export const users = pgTable(
   'users',
@@ -121,7 +126,7 @@ export const availabilitySlots = pgTable(
     endTime: timestamp('end_time', { withTimezone: true }).notNull(),
     status: slotStatusEnum('status').notNull().default('available'),
     version: integer('version').notNull().default(0),
-    heldByConsultationId: uuid('held_by_consultation_id'),
+    heldByConsultationId: uuid('held_by_consultation_id').references((): AnyPgColumn => consultations.id),
     heldUntil: timestamp('held_until', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -148,4 +153,53 @@ export const availabilitySlotsRelations = relations(availabilitySlots, ({ one })
     fields: [availabilitySlots.doctorId],
     references: [doctors.userId],
   }),
+}));
+
+export const consultations = pgTable(
+  'consultations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    patientId: uuid('patient_id').notNull().references(() => users.id),
+    doctorId: uuid('doctor_id').notNull().references(() => doctors.userId),
+    slotId: uuid('slot_id').notNull().references(() => availabilitySlots.id),
+    status: consultationStatusEnum('status').notNull().default('pending_payment'),
+    idempotencyKey: text('idempotency_key').notNull().unique(),
+    feeCharged: numeric('fee_charged', { precision: 10, scale: 2 }).notNull(),
+    scheduledAt: timestamp('scheduled_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    patientScheduledIdx: index('consultations_patient_scheduled_idx').on(table.patientId, table.scheduledAt),
+    doctorScheduledIdx: index('consultations_doctor_scheduled_idx').on(table.doctorId, table.scheduledAt),
+  })
+);
+
+export const payments = pgTable(
+  'payments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    consultationId: uuid('consultation_id').notNull().references(() => consultations.id),
+    providerRef: text('provider_ref').notNull().unique(),
+    amount: numeric('amount', { precision: 10, scale: 2 }).notNull(),
+    status: paymentStatusEnum('status').notNull().default('initiated'),
+    idempotencyKey: text('idempotency_key').notNull().unique(),
+    rawWebhookJson: jsonb('raw_webhook_json'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    consultationIdUnique: uniqueIndex('payments_consultation_id_unique').on(table.consultationId),
+  })
+);
+
+export const consultationsRelations = relations(consultations, ({ one, many }) => ({
+  patient: one(users, { fields: [consultations.patientId], references: [users.id] }),
+  doctor: one(doctors, { fields: [consultations.doctorId], references: [doctors.userId] }),
+  slot: one(availabilitySlots, { fields: [consultations.slotId], references: [availabilitySlots.id] }),
+  payments: many(payments),
+}));
+
+export const paymentsRelations = relations(payments, ({ one }) => ({
+  consultation: one(consultations, { fields: [payments.consultationId], references: [consultations.id] }),
 }));
