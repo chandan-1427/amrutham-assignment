@@ -191,6 +191,22 @@ simplification for the README, same as the deferred partitioning.
 `GET /prescriptions/:id` writes a `viewed` audit entry on every read, per
 DB doc §7's requirement that PHI access be logged.
 
+### Ops / Observability (Tier 1) — `src/routes/ops/index.ts`
+| Route | Status |
+|---|---|
+| `GET /healthz` | ✅ tested — liveness, no dependencies checked |
+| `GET /readyz` | ✅ tested — DB connectivity check via `select 1`, 503 on failure |
+| `GET /metrics` | ✅ tested — Prometheus exposition format, default Node process metrics + custom `http_requests_total`/`http_request_duration_seconds` counters via global middleware |
+
+**Scope note:** `/readyz` only checks Postgres. The route map's description
+("DB/Redis check") anticipates a Redis dependency that was deliberately
+deferred after the availability-search batch (search caching not yet
+implemented). Noted in code as a placeholder, not silently ignored.
+
+---
+
+## STATUS: All 22 Tier-1 routes implemented and verified. 🎉
+
 ### Middleware
 - `src/middleware/auth.ts` — `requireAuth`. Single responsibility: extract
   `Bearer` token, verify signature/expiry via `jose`, attach `{ id, role }`

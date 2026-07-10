@@ -3,6 +3,10 @@ import { Hono } from 'hono';
 import { serve } from '@hono/node-server'
 import { HTTPException } from 'hono/http-exception';
 import { AppError } from './lib/errors.js';
+
+import opsRoute from './routes/ops/index.js';
+import { metricsMiddleware } from './middleware/metrics.js';
+
 import auth from './routes/auth/index.js';
 import usersRoute from './routes/users/index.js';
 import doctorsRoute from './routes/doctors/index.js';
@@ -14,6 +18,9 @@ import auditLogsRoute from './routes/audit-logs/index.js';
 import adminRoute from './routes/admin/index.js';
 
 const app = new Hono();
+
+app.use('*', metricsMiddleware);
+app.route('/', opsRoute);
 
 app.route('/auth', auth);
 app.route('/users', usersRoute);
