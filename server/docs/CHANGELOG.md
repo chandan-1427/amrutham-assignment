@@ -132,6 +132,25 @@ clean 400. Applied to all `:id` params in `consultations` and `doctors` routes.
   a cancelled consultation is a no-op returning the same result), not a
   second stored idempotency key.
 
+### Prescriptions (Tier 1) — `src/routes/consultations/index.ts` (POST), `src/routes/prescriptions/index.ts` (GET)
+| Route | Status |
+|---|---|
+| `POST /consultations/:id/prescriptions` | ✅ tested — doctor-only, requires in_progress/completed status, 409 on duplicate (one prescription per consultation per DB doc), 403 for patient attempting to write |
+| `GET /prescriptions/:id` | ✅ tested — patient/doctor only (party check), 403 for third party, decrypted content verified to round-trip exactly against what was submitted |
+
+**PHI encryption:** `notes` and `medications` stored as AES-256-GCM encrypted
+text (`src/lib/encryption.ts`), not `jsonb` as sketched in the DB doc —
+encrypted bytes aren't valid JSON, so `medications_json` became
+`medications_encrypted text`. Encryption logic extracted from the earlier
+MFA-secret implementation into a shared module rather than duplicated;
+`mfa.ts` refactored to use it (no behavior change). New `PHI_ENCRYPTION_KEY`
+env var, separate from `MFA_ENCRYPTION_KEY` — different sensitivity domains,
+independently rotatable.
+
+**Deferred:** DB doc §7 requires PHI access to be logged to `audit_logs` on
+every read. `audit_logs` doesn't exist yet (next batch) — a `TODO` marks the
+spot in `GET /prescriptions/:id` where that call belongs once it does.
+
 ### Middleware
 - `src/middleware/auth.ts` — `requireAuth`. Single responsibility: extract
   `Bearer` token, verify signature/expiry via `jose`, attach `{ id, role }`

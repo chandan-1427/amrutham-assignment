@@ -7,6 +7,7 @@ const envSchema = z.object({
   MFA_ENCRYPTION_KEY: z.string().length(64), // 32-byte hex key for AES-256-GCM
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PAYMENT_GATEWAY_WEBHOOK_SECRET: z.string().min(32),
+  PHI_ENCRYPTION_KEY: z.string().length(64),
 });
 
 const parsed = envSchema.safeParse(process.env);

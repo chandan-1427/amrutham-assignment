@@ -9,9 +9,16 @@ import { createPaymentIntent } from '../../lib/payment-gateway.js';
 import { AppError } from '../../lib/errors.js';
 import { createConsultationSchema, listConsultationsSchema } from './schema.js';
 import { requireUuidParam } from '../../lib/params.js';
+import { prescriptions } from '../../db/schema.js';
+import { encrypt } from '../../lib/encryption.js';
+import { env } from '../../config/env.js';
+import { createPrescriptionSchema } from '../prescriptions/schema.js';
+
 
 const consultationsRoute = new Hono();
 const HOLD_MINUTES = 10;
+
+const phiKey = Buffer.from(env.PHI_ENCRYPTION_KEY, 'hex');
 
 consultationsRoute.post('/', requireAuth, zValidator('json', createConsultationSchema), async (c) => {
   const authUser = c.get('user');
@@ -224,5 +231,41 @@ consultationsRoute.post('/:id/cancel', requireAuth, async (c) => {
 
   return c.json(updated);
 });
+
+consultationsRoute.post(
+  '/:id/prescriptions',
+  requireAuth,
+  zValidator('json', createPrescriptionSchema),
+  async (c) => {
+    const authUser = c.get('user');
+    const id = requireUuidParam(c, 'id');
+    const { notes, medications } = c.req.valid('json');
+
+    const consultation = await db.query.consultations.findFirst({ where: eq(consultations.id, id) });
+    if (!consultation) throw new AppError(404, 'Consultation not found');
+    if (authUser.role !== 'doctor' || authUser.id !== consultation.doctorId)
+      throw new AppError(403, 'Only the assigned doctor can add a prescription');
+    if (!['in_progress', 'completed'].includes(consultation.status))
+      throw new AppError(409, `Cannot add a prescription for status ${consultation.status}`);
+
+    const existing = await db.query.prescriptions.findFirst({ where: eq(prescriptions.consultationId, id) });
+    if (existing) throw new AppError(409, 'A prescription already exists for this consultation');
+
+    const [prescription] = await db
+      .insert(prescriptions)
+      .values({
+        consultationId: id,
+        doctorId: authUser.id,
+        notesEncrypted: encrypt(notes, phiKey),
+        medicationsEncrypted: encrypt(JSON.stringify(medications), phiKey),
+      })
+      .returning();
+
+    return c.json(
+      { id: prescription.id, consultationId: prescription.consultationId, issuedAt: prescription.issuedAt },
+      201
+    );
+  }
+);
 
 export default consultationsRoute;

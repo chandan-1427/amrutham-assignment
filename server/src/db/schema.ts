@@ -203,3 +203,24 @@ export const consultationsRelations = relations(consultations, ({ one, many }) =
 export const paymentsRelations = relations(payments, ({ one }) => ({
   consultation: one(consultations, { fields: [payments.consultationId], references: [consultations.id] }),
 }));
+
+export const prescriptions = pgTable(
+  'prescriptions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    consultationId: uuid('consultation_id').notNull().references(() => consultations.id),
+    doctorId: uuid('doctor_id').notNull().references(() => doctors.userId),
+    notesEncrypted: text('notes_encrypted').notNull(),
+    medicationsEncrypted: text('medications_encrypted').notNull(),
+    issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    consultationIdUnique: uniqueIndex('prescriptions_consultation_id_unique').on(table.consultationId),
+  })
+);
+
+export const prescriptionsRelations = relations(prescriptions, ({ one }) => ({
+  consultation: one(consultations, { fields: [prescriptions.consultationId], references: [consultations.id] }),
+}));

@@ -9,6 +9,7 @@ import doctorsRoute from './routes/doctors/index.js';
 import availabilityRoute from './routes/availability/index.js';
 import consultationsRoute from './routes/consultations/index.js';
 import paymentsRoute from './routes/payments/index.js';
+import prescriptionsRoute from './routes/prescriptions/index.js';
 
 const app = new Hono();
 
@@ -18,6 +19,7 @@ app.route('/doctors', doctorsRoute);
 app.route('/availability', availabilityRoute);
 app.route('/consultations', consultationsRoute);
 app.route('/payments', paymentsRoute);
+app.route('/prescriptions', prescriptionsRoute);
 
 app.onError((err, c) => {
   if (err instanceof AppError) {
