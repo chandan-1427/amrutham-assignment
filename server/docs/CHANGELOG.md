@@ -151,6 +151,46 @@ independently rotatable.
 every read. `audit_logs` doesn't exist yet (next batch) — a `TODO` marks the
 spot in `GET /prescriptions/:id` where that call belongs once it does.
 
+### Compliance & Audit + Admin Analytics (Tier 1)
+`src/routes/audit-logs/index.ts`, `src/routes/admin/index.ts`
+
+| Route | Status |
+|---|---|
+| `GET /audit-logs` | ✅ tested — admin-only, filterable by entityType/entityId/actorId, 403 for non-admin |
+| `GET /admin/analytics/consultations` | ✅ tested — status breakdown + total, date-range filterable |
+
+**Audit logging retrofitted** into all state-changing consultation/payment/
+prescription routes (`src/lib/audit.ts`, `recordAuditLog` helper — accepts
+either `db` or a transaction handle via `Pick<Database, 'insert'>`, so the
+same call works inside or outside a `db.transaction`). 9 call sites total:
+consultation created, confirmed (webhook), failed (webhook), start, complete,
+no-show, cancel; prescription created, prescription viewed.
+
+**Bugs found during retrofit (2 instances, same root cause — a call site
+simply omitted during manual wiring, not a logic error):**
+- `POST /consultations/:id/complete` was missing its `recordAuditLog` call
+  entirely — confirmed via a targeted test showing 3/4 expected audit rows
+  present, with `to: completed` missing specifically.
+- `POST /consultations/:id/no-show` had the same gap.
+Both fixed and reverified with fresh end-to-end runs showing full audit
+trails (4 rows for complete-path, 3 rows for no-show-path).
+
+**Also fixed during this pass:** `requireUuidParam` (added a few batches
+back) hadn't been applied consistently across all `:id` params in
+`consultations/index.ts` — confirmed via full-file review that all 5 call
+sites now use it. Malformed-id requests correctly return 400 instead of a
+raw Postgres 500.
+
+**Scope note:** DB doc specifies `/admin/analytics/consultations` should
+read from a nightly-pre-aggregated `daily_consultation_stats` table, not
+live OLTP queries. Building that pre-aggregation job (a scheduled task) is
+out of scope for this assignment's time box — flagged as a known
+simplification for the README, same as the deferred partitioning.
+
+**PHI audit logging (deferred item from Prescriptions batch) now resolved:**
+`GET /prescriptions/:id` writes a `viewed` audit entry on every read, per
+DB doc §7's requirement that PHI access be logged.
+
 ### Middleware
 - `src/middleware/auth.ts` — `requireAuth`. Single responsibility: extract
   `Bearer` token, verify signature/expiry via `jose`, attach `{ id, role }`

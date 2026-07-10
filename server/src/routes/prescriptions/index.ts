@@ -7,6 +7,7 @@ import { requireUuidParam } from '../../lib/params.js';
 import { decrypt } from '../../lib/encryption.js';
 import { env } from '../../config/env.js';
 import { AppError } from '../../lib/errors.js';
+import { recordAuditLog } from '../../lib/audit.js';
 
 const prescriptionsRoute = new Hono();
 const phiKey = Buffer.from(env.PHI_ENCRYPTION_KEY, 'hex');
@@ -26,8 +27,12 @@ prescriptionsRoute.get('/:id', requireAuth, async (c) => {
   const isParty = authUser.id === consultation.patientId || authUser.id === consultation.doctorId;
   if (!isParty) throw new AppError(403, 'Not authorized to view this prescription');
 
-  // TODO: log this read to audit_logs once that table exists (DB doc §7 requires
-  // PHI access logging on every read) — deferred, audit_logs not built yet.
+  await recordAuditLog(db, {
+    actorId: authUser.id,
+    entityType: 'prescription',
+    entityId: prescription.id,
+    action: 'viewed',
+  });
 
   return c.json({
     id: prescription.id,

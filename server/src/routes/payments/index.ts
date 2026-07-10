@@ -8,6 +8,7 @@ import { requireIdempotencyKey } from '../../lib/idempotency.js';
 import { createPaymentIntent, verifyWebhookSignature } from '../../lib/payment-gateway.js';
 import { AppError } from '../../lib/errors.js';
 import { createPaymentIntentSchema, webhookPayloadSchema } from './schema.js';
+import { recordAuditLog } from '../../lib/audit.js';
 
 const paymentsRoute = new Hono();
 
@@ -74,6 +75,15 @@ paymentsRoute.post('/webhook', async (c) => {
         .update(consultations)
         .set({ status: 'confirmed', updatedAt: new Date() })
         .where(eq(consultations.id, consultationId));
+
+        await recordAuditLog(tx, {
+          actorId: null,
+          entityType: 'consultation',
+          entityId: consultationId,
+          action: 'state_changed',
+          diff: { to: 'confirmed' },
+        });
+
       await tx
         .update(availabilitySlots)
         .set({ status: 'booked', updatedAt: new Date() })
@@ -87,6 +97,15 @@ paymentsRoute.post('/webhook', async (c) => {
         .update(consultations)
         .set({ status: 'cancelled', updatedAt: new Date() })
         .where(eq(consultations.id, consultationId));
+
+        await recordAuditLog(tx, {
+          actorId: null,
+          entityType: 'consultation',
+          entityId: consultationId,
+          action: 'state_changed',
+          diff: { to: 'cancelled', reason: 'payment_failed' },
+        });
+        
       await tx
         .update(availabilitySlots)
         .set({ status: 'available', heldByConsultationId: null, heldUntil: null, updatedAt: new Date() })

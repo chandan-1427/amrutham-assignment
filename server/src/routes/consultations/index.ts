@@ -13,7 +13,7 @@ import { prescriptions } from '../../db/schema.js';
 import { encrypt } from '../../lib/encryption.js';
 import { env } from '../../config/env.js';
 import { createPrescriptionSchema } from '../prescriptions/schema.js';
-
+import { recordAuditLog } from '../../lib/audit.js';
 
 const consultationsRoute = new Hono();
 const HOLD_MINUTES = 10;
@@ -84,6 +84,12 @@ consultationsRoute.post('/', requireAuth, zValidator('json', createConsultationS
       .returning();
 
     if (held.length === 0) throw new AppError(409, 'Slot is no longer available');
+    await recordAuditLog(tx, {
+      actorId: authUser.id,
+      entityType: 'consultation',
+      entityId: created.id,
+      action: 'created',
+    });
     return created;
   });
 
@@ -141,7 +147,7 @@ consultationsRoute.get('/:id', requireAuth, async (c) => {
 
 consultationsRoute.post('/:id/start', requireAuth, async (c) => {
   const authUser = c.get('user');
-  const id = c.req.param('id');
+  const id = requireUuidParam(c, 'id');
   const consultation = await db.query.consultations.findFirst({ where: eq(consultations.id, id) });
   if (!consultation) throw new AppError(404, 'Consultation not found');
   if (authUser.role !== 'doctor' || authUser.id !== consultation.doctorId)
@@ -154,12 +160,21 @@ consultationsRoute.post('/:id/start', requireAuth, async (c) => {
     .set({ status: 'in_progress', updatedAt: new Date() })
     .where(eq(consultations.id, id))
     .returning();
+
+  await recordAuditLog(db, {
+    actorId: authUser.id,
+    entityType: 'consultation',
+    entityId: id,
+    action: 'state_changed',
+    diff: { to: 'in_progress' },
+  });
+
   return c.json(updated);
 });
 
 consultationsRoute.post('/:id/complete', requireAuth, async (c) => {
   const authUser = c.get('user');
-  const id = c.req.param('id');
+  const id = requireUuidParam(c, 'id');
   const consultation = await db.query.consultations.findFirst({ where: eq(consultations.id, id) });
   if (!consultation) throw new AppError(404, 'Consultation not found');
   if (authUser.role !== 'doctor' || authUser.id !== consultation.doctorId)
@@ -172,12 +187,21 @@ consultationsRoute.post('/:id/complete', requireAuth, async (c) => {
     .set({ status: 'completed', updatedAt: new Date() })
     .where(eq(consultations.id, id))
     .returning();
+
+  await recordAuditLog(db, {
+    actorId: authUser.id,
+    entityType: 'consultation',
+    entityId: id,
+    action: 'state_changed',
+    diff: { to: 'completed' },
+  });
+
   return c.json(updated);
 });
 
 consultationsRoute.post('/:id/no-show', requireAuth, async (c) => {
   const authUser = c.get('user');
-  const id = c.req.param('id');
+  const id = requireUuidParam(c, 'id');
   const consultation = await db.query.consultations.findFirst({ where: eq(consultations.id, id) });
   if (!consultation) throw new AppError(404, 'Consultation not found');
   if (authUser.role !== 'doctor' || authUser.id !== consultation.doctorId)
@@ -190,13 +214,22 @@ consultationsRoute.post('/:id/no-show', requireAuth, async (c) => {
     .set({ status: 'no_show', updatedAt: new Date() })
     .where(eq(consultations.id, id))
     .returning();
+
+  await recordAuditLog(db, {
+    actorId: authUser.id,
+    entityType: 'consultation',
+    entityId: id,
+    action: 'state_changed',
+    diff: { to: 'no_show' },
+  });
+
   return c.json(updated);
 });
 
 consultationsRoute.post('/:id/cancel', requireAuth, async (c) => {
   const authUser = c.get('user');
   requireIdempotencyKey(c);
-  const id = c.req.param('id');
+  const id = requireUuidParam(c, 'id');
 
   const consultation = await db.query.consultations.findFirst({ where: eq(consultations.id, id) });
   if (!consultation) throw new AppError(404, 'Consultation not found');
@@ -225,6 +258,13 @@ consultationsRoute.post('/:id/cancel', requireAuth, async (c) => {
     if (payment?.status === 'confirmed') {
       await tx.update(payments).set({ status: 'refunded', updatedAt: new Date() }).where(eq(payments.id, payment.id));
     }
+
+    await recordAuditLog(tx, {
+      actorId: authUser.id,
+      entityType: 'consultation',
+      entityId: id,
+      action: 'cancelled',
+    });
 
     return updatedConsultation;
   });
@@ -260,6 +300,13 @@ consultationsRoute.post(
         medicationsEncrypted: encrypt(JSON.stringify(medications), phiKey),
       })
       .returning();
+
+    await recordAuditLog(db, {
+      actorId: authUser.id,
+      entityType: 'prescription',
+      entityId: prescription.id,
+      action: 'created',
+    });
 
     return c.json(
       { id: prescription.id, consultationId: prescription.consultationId, issuedAt: prescription.issuedAt },

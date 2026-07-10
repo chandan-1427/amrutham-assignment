@@ -224,3 +224,19 @@ export const prescriptions = pgTable(
 export const prescriptionsRelations = relations(prescriptions, ({ one }) => ({
   consultation: one(consultations, { fields: [prescriptions.consultationId], references: [consultations.id] }),
 }));
+
+export const auditLogs = pgTable(
+  'audit_logs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    actorId: uuid('actor_id').references(() => users.id),
+    entityType: text('entity_type').notNull(),
+    entityId: uuid('entity_id').notNull(),
+    action: text('action').notNull(),
+    diffJson: jsonb('diff_json'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    entityIdx: index('audit_logs_entity_idx').on(table.entityType, table.entityId, table.createdAt),
+  })
+);
